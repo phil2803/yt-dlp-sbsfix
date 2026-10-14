@@ -1,0 +1,3 @@
+# BBC iPlayer queue - run with download_bbc.ps1 (needs UK VPN).
+bbc = D:\video\bbc
+

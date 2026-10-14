@@ -1,0 +1,10 @@
+# Binaries - download separately (see README)
+*.exe
+
+# Personal / generated files
+sbs_queue.txt
+bbc_queue.txt
+downloaded.txt
+*.conf
+.netrc
+__pycache__/

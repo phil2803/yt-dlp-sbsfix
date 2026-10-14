@@ -1,0 +1,7 @@
+# Base output folders (change to suit). One URL per line below.
+sbstv     = D:\video\sbs\tv
+sbsmovies = D:\video\sbs\movies
+iview     = D:\video\iview
+youtube   = D:\video\youtube
+default   = D:\video\misc
+
