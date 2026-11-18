@@ -28,6 +28,17 @@ extractor. That means you can:
 
 All credit for the extractor goes to 0xvd. This repo only repackages it.
 
+### Update 19 Nov 2026: "DRM is required for this stream"
+
+On 18 Nov 2026 SBS changed its playback API, and every video started failing with
+"This video is only available for registered users" (the API itself says
+`DRM is required for this stream, but no DRM was requested`). The plugin now uses the fix
+posted on the Whirlpool SBS forum and shared in
+[PR #16543](https://github.com/yt-dlp/yt-dlp/pull/16543#issuecomment-6994440135).
+The request lists SBS's DRM stream types, and SBS then also returns its plain `AES_HLS`
+stream. The plugin downloads only that unprotected stream and skips anything with DRM.
+If you downloaded the plugin before 19 Nov, replace `sbsfix.py` with the current one.
+
 ### Using just the plugin
 
 You don't need the scripts to use the plugin. Copy the `yt-dlp-plugins` folder next to your

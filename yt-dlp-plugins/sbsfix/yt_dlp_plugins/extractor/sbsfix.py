@@ -102,29 +102,45 @@ class _SBSFixIE(SBSIE, plugin_name='sbsfix'):
 
     def _call_api(self, api, video_id, note='Downloading JSON metadata', headers=None, **kwargs):
         headers = headers or {}
+        if kwargs.get('data') is not None:
+            headers.setdefault('Content-Type', 'application/json')
         if access_token := self._ACCESS_TOKEN:
             headers['Authorization'] = f'Bearer {access_token}'
         return self._download_json(api, video_id, note=note, headers=headers, **kwargs)
 
+    def _get_playback(self, video_id, note='Downloading JSON metadata'):
+        # Since 2026-11-18 SBS rejects requests that don't list a DRM provider
+        # ("DRM is required for this stream, but no DRM was requested"). Listing
+        # one makes it also return the plain AES_HLS stream, which is the only
+        # one used below; Widevine providers are skipped.
+        return self._call_api(
+            f'https://playback.pr.sbsod.com/stream/{video_id}', video_id, note=note,
+            data=json.dumps({
+                'deviceClass': 'web',
+                'drm': {'level': 'L3', 'type': 'widevine'},
+                'streamOptions': {'audio': 'demuxed'},
+                'streamProviders': ['GoogleDAI_DRM_HLS', 'GoogleDAI_AES_HLS', 'AES_HLS'],
+            }).encode())
+
     def _real_extract(self, url):
         video_id = self._match_id(url)
         try:
-            media = self._call_api(
-                f'https://playback.pr.sbsod.com/stream/{video_id}', video_id,
-                data=json.dumps({
-                    'deviceClass': 'web',
-                    'streamOptions': {'audio': 'demuxed'},
-                    'streamProviders': ['HLS'],
-                }).encode())
+            media = self._get_playback(video_id)
         except ExtractorError as e:
-            if isinstance(e.cause, HTTPError) and e.cause.status in (401, 400):
-                if self._ACCESS_TOKEN:
-                    self._refresh_access_token()
+            if not (isinstance(e.cause, HTTPError) and e.cause.status in (401, 400)):
+                raise
+            if not self._ACCESS_TOKEN:
                 self.raise_login_required()
-            raise
+            self._refresh_access_token()
+            try:
+                media = self._get_playback(video_id, 'Retrying playback after token refresh')
+            except ExtractorError as e:
+                if isinstance(e.cause, HTTPError) and e.cause.status in (401, 400):
+                    self.raise_login_required()
+                raise
 
         formats, subtitles = [], {}
-        for fmt_url in traverse_obj(media, ('streamProviders', ..., 'url')):
+        for fmt_url in traverse_obj(media, ('streamProviders', lambda _, v: not v.get('drm'), 'url')):
             ext = determine_ext(fmt_url)
             if ext == 'm3u8':
                 fmts, subs = self._extract_m3u8_formats_and_subtitles(fmt_url, video_id)
