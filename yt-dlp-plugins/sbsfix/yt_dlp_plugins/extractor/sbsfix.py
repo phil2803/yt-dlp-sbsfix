@@ -122,22 +122,41 @@ class _SBSFixIE(SBSIE, plugin_name='sbsfix'):
                 'streamProviders': ['GoogleDAI_DRM_HLS', 'GoogleDAI_AES_HLS', 'AES_HLS'],
             }).encode())
 
+    def _playback_error(self, e):
+        # SBS explains 400/401s in a JSON "message" (expired token, DRM, geo...).
+        # Error handling adapted from 0xvd's PR #16543 commit fdb2c8e1.
+        if not (isinstance(e.cause, HTTPError) and e.cause.status in (401, 400)):
+            return None
+        return traverse_obj(
+            self._parse_json(e.cause.response.read(), None, fatal=False),
+            ('message', {str}), default='')
+
+    def _raise_playback_error(self, message):
+        if message:
+            raise ExtractorError(f'SBS says: {message}', expected=True)
+        self.raise_login_required()
+
     def _real_extract(self, url):
         video_id = self._match_id(url)
         try:
             media = self._get_playback(video_id)
         except ExtractorError as e:
-            if not (isinstance(e.cause, HTTPError) and e.cause.status in (401, 400)):
+            message = self._playback_error(e)
+            if message is None:
                 raise
-            if not self._ACCESS_TOKEN:
-                self.raise_login_required()
+            # Refresh and retry once, unless SBS gave a reason that isn't about
+            # the token (no point retrying "DRM is required..." etc).
+            token_problem = not message or any(w in message.lower() for w in ('eof', 'expire', 'token'))
+            if not (self._ACCESS_TOKEN and token_problem):
+                self._raise_playback_error(message)
             self._refresh_access_token()
             try:
                 media = self._get_playback(video_id, 'Retrying playback after token refresh')
             except ExtractorError as e:
-                if isinstance(e.cause, HTTPError) and e.cause.status in (401, 400):
-                    self.raise_login_required()
-                raise
+                message = self._playback_error(e)
+                if message is None:
+                    raise
+                self._raise_playback_error(message)
 
         formats, subtitles = [], {}
         for fmt_url in traverse_obj(media, ('streamProviders', lambda _, v: not v.get('drm'), 'url')):
